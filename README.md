@@ -1,0 +1,1 @@
+This project aims to combine different NFDI4Chem data resources, in semantic format, with an NLP approach to enable queries in human language. 
