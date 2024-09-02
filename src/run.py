@@ -24,47 +24,6 @@ def setPrefix(objects: list, prefix: str):
     mappedClasses = map(lambda x: prefix + ":" + x, objects)
     return ",\n".join(mappedClasses)
 
-
-# classes_original = ["Dataset", "Study", "CreativeWork", "MolecularEntity", "ChemicalSubstance", "Person"]
-# classes = setPrefix(classes_original, PREFIX)
-
-# properties_original = ['dct:conformsTo', 'name', 'alternateName', 'description', 'keywords', 'license', 'publisher', 'url', 'dateCreated', 'dateModified', 'datePublished', 'author', 'citation', 'hasPart', 'about', 'studyDomain', 'studySubject', 'isPartOf', 'distribution', 'includedInDataCatalog', 'isAccessibleForFree', 'measurementTechnique']
-# properties = setPrefix(properties_original, PREFIX)
-
-
-# OPTIMISATION_TEMPLATE = """
-#   Task: Rephrase an input question into a new one!
-  
-#   The input question delimited by triple backticks is:
-#   ```
-#   {question}
-#   ```
-  
-#   Follow the {schema} ontology and use it to guide the rephrasing of the input question.
-#   Given the ontology, pick the relevant classes from the following list to be used as keywords in the result: {classes}.
-#   Given the ontology, pick the relevant properties from the following list to be used as keywords in the result: {properties}.
-#   Do not take other classes and properties than mentioned above into account.
-
-#   During the rephrasing follow the rules delimited by triple backticks below:
-#   ```
-#     When semantically searching for names, then compare for both the name and the alternate name of a property if available. 
-#     Transform the term "measured by X" in the input question into something like " and where either the measurement technique's name or the measurement technique's alternate name contains X".
-
-#     If you detect the term "NMR" in the input question, then use both "NMR" and "nuclear magnetic resonance" in the rewritten question.
-#     If you detect the term "nuclear magnetic resonance" in the input question, then use both "NMR" and "nuclear magnetic resonance" in the rewritten question.
-#     If you detect the term "MS" in the input question, then also use both "MS" and "mass spectrometry" in the rewritten question.
-#     If you detect the term "mass spectrometry" in the input question, then also use "MS" and "mass spectrometry" in the rewritten question.
-#     If you detect the term "IR" in the input question, then also use both "IR" and "infrared spectroscopy" in the rewritten question.
-#     If you detect the term "infrared spectroscopy" in the input question, then also use both "IR" and "infrared spectroscopy" in the rewritten question.
-#   ```
-  
-#   Do not return the original question in your response, only the rewritten one.
-#   Do not include any explanations or apologies in your response.
-#   Do not wrap your response in backticks.
-#   Do not include any text except the rewritten question which you have generated.  
-
-#   """
-
 OPTIMISATION_TEMPLATE = """
   Task: Rephrase an input question into a new one!
   
@@ -78,7 +37,8 @@ OPTIMISATION_TEMPLATE = """
   During the rephrasing follow the rules delimited by triple backticks below:
   ```
     When semantically searching for names, then compare for both the name and the alternate name of a property if available. 
-    Transform the term "measured by X" in the input question into something like " and where either the measurement technique's name or the measurement technique's alternate name contains X".
+    Transform the term "measured with" into "and where either the measurement technique's name or the measurement technique's alternate name contains".
+    During string comparison, use the regex operator and ignore case sensitivity.
 
     If you detect the term "NMR" in the input question, then use both "NMR" and "nuclear magnetic resonance" in the rewritten question.
     If you detect the term "nuclear magnetic resonance" in the input question, then use both "NMR" and "nuclear magnetic resonance" in the rewritten question.
@@ -97,13 +57,10 @@ OPTIMISATION_TEMPLATE = """
 
 
 
-
 OPTIMISATION_TEMPLATE_PROMPT = PromptTemplate(
     input_variables = ["question", "schema"], #, "classes", "properties"],
     template = OPTIMISATION_TEMPLATE,
 )
-
-# queryStr = "Search for datasets which contain 'Cocain' in their names. The name of the dataset's measurement technique and the alternate name of the dataset's measurement technique has to contain either 'nuclear magnetic resonance' or 'NMR' or 'nmr'."
 
 graph = OntotextGraphDBGraph(
     query_endpoint = "http://localhost:7200/repositories/NFDI4Chem",
@@ -111,7 +68,7 @@ graph = OntotextGraphDBGraph(
 )
 
 llm = OpenAI(        
-        # model_name = "gpt-3.5-turbo-16k", 
+        model_name = "gpt-3.5-turbo-instruct", 
         api_key = OPENAI_API_KEY,
         temperature = 0)
 
@@ -119,37 +76,11 @@ optimisation_of_question = LLMChain(llm = llm, prompt = OPTIMISATION_TEMPLATE_PR
 optimisation_result = optimisation_of_question.invoke(input = {
    "question": QUESTION, 
    "schema": SCHEMA, 
-   "prefix": PREFIX,
-   #"classes": classes, 
-   #"properties": properties
+   "prefix": PREFIX
    })
 print("\n\nOriginal question: " + QUESTION)
 print("Rewritten question: \n\"" + optimisation_result["text"] + "\n\"")
 
-
-
-
-
-# GRAPHDB_SPARQL_GENERATION_TEMPLATE = """
-#   Task: Write a SPARQL SELECT query for querying a GraphDB graph database.
-  
-#   The underlying ontology schema is {schema} and the prefix name {prefix}.
-#   Only allow classes from the following list to be used the SPARQL query to generate: {classes}.
-#   Only allow properties from the following list to be used the SPARQL query to generate: {properties}.
-#   Do not include any classes or properties that are not explicitly in this list.
-  
-#   The question delimited by triple backticks is:
-#   ```
-#   {question}
-#   ```
-
-  
-#   Include all necessary prefixes.
-#   Do not include any explanations or apologies in your responses.
-#   Do not wrap the query in backticks.
-#   Do not include any text except the SPARQL query generated.
-#   Only create exactly one SPARQL query.
-#   """
 
 GRAPHDB_SPARQL_GENERATION_TEMPLATE = """
   Task: Write a SPARQL SELECT query for querying a GraphDB graph database.
@@ -169,9 +100,7 @@ GRAPHDB_SPARQL_GENERATION_TEMPLATE = """
   """
 
 GRAPHDB_SPARQL_GENERATION_PROMPT = PromptTemplate(
-    input_variables = ["schema", "question", "prefix", 
-                        #"classes", "properties"
-                       ],
+    input_variables = ["schema", "question", "prefix"],
     template = GRAPHDB_SPARQL_GENERATION_TEMPLATE,
 )
 
@@ -182,8 +111,6 @@ sparql_generation_chain_result = sparql_generation_chain.invoke(
         "schema": SCHEMA,
         "question": optimisation_result["text"],
         "prefix": PREFIX,
-        #"classes": classes,
-        #"properties": properties,
         }, 
     )
 generated_sparql = sparql_generation_chain_result[sparql_generation_chain.output_key]
